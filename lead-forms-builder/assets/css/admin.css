@@ -1,0 +1,29 @@
+.lfb-admin-wrap .lfb-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 14px 0 18px;
+}
+
+.lfb-admin-wrap .lfb-toolbar select,
+.lfb-admin-wrap .lfb-toolbar .button {
+  height: 40px;
+}
+
+.lfb-leads-table th {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.lfb-leads-table td {
+  vertical-align: top;
+  max-width: 240px;
+  word-break: break-word;
+}
+
+.lfb-admin-wrap textarea,
+.lfb-admin-wrap input[type="email"],
+.lfb-admin-wrap input[type="url"],
+.lfb-admin-wrap input[type="number"] {
+  border-radius: 8px;
+}

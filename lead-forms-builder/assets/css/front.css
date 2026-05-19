@@ -1,0 +1,22 @@
+.lfb-form-wrapper {
+  width: 100%;
+}
+
+.lfb-form-inner {
+  width: 100%;
+}
+
+.lfb-form-inner input,
+.lfb-form-inner select,
+.lfb-form-inner textarea,
+.lfb-form-inner button {
+  max-width: 100%;
+}
+
+.lfb-message {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #e7f8ef;
+  color: #0d6b3f;
+  margin-bottom: 12px;
+}

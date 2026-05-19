@@ -56,6 +56,7 @@ class Plugin {
         $html = get_post_meta($post->ID, '_lfb_html', true);
         $css = get_post_meta($post->ID, '_lfb_css', true);
         $js = get_post_meta($post->ID, '_lfb_js', true);
+        $isolate = (bool) get_post_meta($post->ID, '_lfb_isolate', true);
         ?>
         <p><?php esc_html_e('Paste your custom form markup. Make sure your form includes fields and submit button.', 'lead-forms-builder'); ?></p>
         <label for="lfb_html"><strong>HTML</strong></label>
@@ -66,6 +67,10 @@ class Plugin {
 
         <label for="lfb_js" style="display:block;margin-top:16px;"><strong>JS (optional)</strong></label>
         <textarea id="lfb_js" name="lfb_js" style="width:100%;min-height:150px;"><?php echo esc_textarea($js); ?></textarea>
+
+        <p style="margin-top:16px;">
+            <label><input type="checkbox" name="lfb_isolate" value="1" <?php checked($isolate); ?>> <?php esc_html_e('Isolate form styles from the active theme (Shadow DOM mode)', 'lead-forms-builder'); ?></label>
+        </p>
         <?php
     }
 
@@ -87,6 +92,7 @@ class Plugin {
         update_post_meta($post_id, '_lfb_html', isset($_POST['lfb_html']) ? wp_unslash($_POST['lfb_html']) : '');
         update_post_meta($post_id, '_lfb_css', isset($_POST['lfb_css']) ? wp_unslash($_POST['lfb_css']) : '');
         update_post_meta($post_id, '_lfb_js', isset($_POST['lfb_js']) ? wp_unslash($_POST['lfb_js']) : '');
+        update_post_meta($post_id, '_lfb_isolate', isset($_POST['lfb_isolate']) ? '1' : '0');
     }
 
     public static function render_form_shortcode(array $atts): string {
@@ -99,6 +105,7 @@ class Plugin {
         $html = (string) get_post_meta($form_id, '_lfb_html', true);
         $css = (string) get_post_meta($form_id, '_lfb_css', true);
         $js = (string) get_post_meta($form_id, '_lfb_js', true);
+        $isolate = (bool) get_post_meta($form_id, '_lfb_isolate', true);
 
         if (empty($html)) {
             return '';
@@ -118,16 +125,24 @@ class Plugin {
             $output .= '<div class="lfb-message">' . esc_html($message) . '</div>';
         }
 
-        $output .= '<form method="post" class="lfb-form-inner">';
-        $output .= wp_kses_post($html);
-        $output .= '<input type="hidden" name="lfb_form_id" value="' . esc_attr((string) $form_id) . '">';
-        $output .= wp_nonce_field('lfb_submit_' . $form_id, 'lfb_submit_nonce', true, false);
-        $output .= '</form>';
-        if ($css !== '') {
-            $output .= '<style>#' . esc_attr($wrapper_id) . '{max-width:100%;}' . $css . '@media (max-width:767px){#' . esc_attr($wrapper_id) . ' *{max-width:100%;box-sizing:border-box;}}</style>';
-        }
-        if ($js !== '') {
-            $output .= '<script>(function(){' . $js . '})();</script>';
+        $form_markup = '<form method="post" class="lfb-form-inner">';
+        $form_markup .= wp_kses_post($html);
+        $form_markup .= '<input type="hidden" name="lfb_form_id" value="' . esc_attr((string) $form_id) . '">';
+        $form_markup .= wp_nonce_field('lfb_submit_' . $form_id, 'lfb_submit_nonce', true, false);
+        $form_markup .= '</form>';
+
+        if ($isolate) {
+            $output .= '<div class="lfb-shadow-host" data-lfb-shadow="1" data-lfb-form-id="' . esc_attr((string) $form_id) . '" data-lfb-css="' . esc_attr($css) . '" data-lfb-js="' . esc_attr($js) . '">';
+            $output .= '<template>' . $form_markup . '</template>';
+            $output .= '</div>';
+        } else {
+            $output .= $form_markup;
+            if ($css !== '') {
+                $output .= '<style>#' . esc_attr($wrapper_id) . '{max-width:100%;}' . $css . '@media (max-width:767px){#' . esc_attr($wrapper_id) . ' *{max-width:100%;box-sizing:border-box;}}</style>';
+            }
+            if ($js !== '') {
+                $output .= '<script>(function(){' . $js . '})();</script>';
+            }
         }
         $output .= '</div>';
 

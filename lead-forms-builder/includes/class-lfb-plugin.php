@@ -58,6 +58,13 @@ class Plugin {
         $js = get_post_meta($post->ID, '_lfb_js', true);
         $isolate = (bool) get_post_meta($post->ID, '_lfb_isolate', true);
         $notify_email = (string) get_post_meta($post->ID, '_lfb_notify_email', true);
+        $success_message = (string) get_post_meta($post->ID, '_lfb_success_message', true);
+        $after_submit_action = (string) get_post_meta($post->ID, '_lfb_after_submit_action', true);
+        $redirect_url = (string) get_post_meta($post->ID, '_lfb_redirect_url', true);
+        $redirect_delay = (int) get_post_meta($post->ID, '_lfb_redirect_delay', true);
+        if (!in_array($after_submit_action, ['message', 'redirect', 'message_redirect'], true)) {
+            $after_submit_action = 'message';
+        }
         ?>
         <p><?php esc_html_e('Paste your custom form markup. Make sure your form includes fields and submit button.', 'lead-forms-builder'); ?></p>
         <label for="lfb_html"><strong>HTML</strong></label>
@@ -76,6 +83,23 @@ class Plugin {
         <label for="lfb_notify_email" style="display:block;margin-top:16px;"><strong>Email notifications</strong></label>
         <input id="lfb_notify_email" name="lfb_notify_email" type="email" style="width:100%;" value="<?php echo esc_attr($notify_email); ?>" placeholder="name@example.com">
         <p class="description"><?php esc_html_e('If set, each new lead from this form will be sent to this email.', 'lead-forms-builder'); ?></p>
+
+        <hr style="margin:18px 0;">
+        <h3><?php esc_html_e('After submit behavior', 'lead-forms-builder'); ?></h3>
+        <label for="lfb_after_submit_action"><strong><?php esc_html_e('Action', 'lead-forms-builder'); ?></strong></label>
+        <select id="lfb_after_submit_action" name="lfb_after_submit_action" style="width:100%;">
+            <option value="message" <?php selected($after_submit_action, 'message'); ?>><?php esc_html_e('Show success message', 'lead-forms-builder'); ?></option>
+            <option value="redirect" <?php selected($after_submit_action, 'redirect'); ?>><?php esc_html_e('Redirect only', 'lead-forms-builder'); ?></option>
+            <option value="message_redirect" <?php selected($after_submit_action, 'message_redirect'); ?>><?php esc_html_e('Show message then redirect', 'lead-forms-builder'); ?></option>
+        </select>
+
+        <label for="lfb_success_message" style="display:block;margin-top:12px;"><strong><?php esc_html_e('Success message', 'lead-forms-builder'); ?></strong></label>
+        <textarea id="lfb_success_message" name="lfb_success_message" style="width:100%;min-height:90px;"><?php echo esc_textarea($success_message); ?></textarea>
+
+        <label for="lfb_redirect_url" style="display:block;margin-top:12px;"><strong><?php esc_html_e('Redirect URL', 'lead-forms-builder'); ?></strong></label>
+        <input id="lfb_redirect_url" name="lfb_redirect_url" type="url" style="width:100%;" value="<?php echo esc_attr($redirect_url); ?>" placeholder="https://example.com/thank-you">
+        <label for="lfb_redirect_delay" style="display:block;margin-top:12px;"><strong><?php esc_html_e('Redirect delay (seconds)', 'lead-forms-builder'); ?></strong></label>
+        <input id="lfb_redirect_delay" name="lfb_redirect_delay" type="number" min="0" max="30" value="<?php echo esc_attr((string) $redirect_delay); ?>">
         <?php
     }
 
@@ -100,6 +124,18 @@ class Plugin {
         update_post_meta($post_id, '_lfb_isolate', isset($_POST['lfb_isolate']) ? '1' : '0');
         $notify_email = isset($_POST['lfb_notify_email']) ? sanitize_email(wp_unslash($_POST['lfb_notify_email'])) : '';
         update_post_meta($post_id, '_lfb_notify_email', is_email($notify_email) ? $notify_email : '');
+        $success_message = isset($_POST['lfb_success_message']) ? sanitize_textarea_field(wp_unslash($_POST['lfb_success_message'])) : '';
+        update_post_meta($post_id, '_lfb_success_message', $success_message);
+        $after_submit_action = isset($_POST['lfb_after_submit_action']) ? sanitize_key(wp_unslash($_POST['lfb_after_submit_action'])) : 'message';
+        if (!in_array($after_submit_action, ['message', 'redirect', 'message_redirect'], true)) {
+            $after_submit_action = 'message';
+        }
+        update_post_meta($post_id, '_lfb_after_submit_action', $after_submit_action);
+        $redirect_url = isset($_POST['lfb_redirect_url']) ? esc_url_raw(wp_unslash($_POST['lfb_redirect_url'])) : '';
+        update_post_meta($post_id, '_lfb_redirect_url', $redirect_url);
+        $redirect_delay = isset($_POST['lfb_redirect_delay']) ? (int) $_POST['lfb_redirect_delay'] : 0;
+        $redirect_delay = max(0, min(30, $redirect_delay));
+        update_post_meta($post_id, '_lfb_redirect_delay', $redirect_delay);
     }
 
     public static function render_form_shortcode(array $atts): string {
@@ -121,15 +157,19 @@ class Plugin {
         wp_enqueue_style('lfb-front');
         wp_enqueue_script('lfb-front');
 
-        $message = '';
+        $submission_result = ['message' => '', 'redirect_url' => '', 'redirect_delay' => 0];
         if ('POST' === $_SERVER['REQUEST_METHOD'] && isset($_POST['lfb_form_id']) && (int) $_POST['lfb_form_id'] === $form_id) {
-            $message = self::handle_submission($form_id);
+            $submission_result = self::handle_submission($form_id);
         }
 
         $wrapper_id = 'lfb-form-' . $form_id;
         $output = '<div class="lfb-form-wrapper" id="' . esc_attr($wrapper_id) . '">';
-        if ($message) {
-            $output .= '<div class="lfb-message">' . esc_html($message) . '</div>';
+        if (!empty($submission_result['message'])) {
+            $output .= '<div class="lfb-message">' . esc_html((string) $submission_result['message']) . '</div>';
+        }
+        if (!empty($submission_result['redirect_url'])) {
+            $delay_ms = max(0, ((int) $submission_result['redirect_delay']) * 1000);
+            $output .= '<script>setTimeout(function(){window.location.href=' . wp_json_encode((string) $submission_result['redirect_url']) . ';},' . (int) $delay_ms . ');</script>';
         }
 
         $form_markup = '<form method="post" class="lfb-form-inner">';
@@ -156,9 +196,9 @@ class Plugin {
         return $output;
     }
 
-    private static function handle_submission(int $form_id): string {
+    private static function handle_submission(int $form_id): array {
         if (!isset($_POST['lfb_submit_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['lfb_submit_nonce'])), 'lfb_submit_' . $form_id)) {
-            return __('Security check failed.', 'lead-forms-builder');
+            return ['message' => __('Security check failed.', 'lead-forms-builder'), 'redirect_url' => '', 'redirect_delay' => 0];
         }
 
         $payload = [];
@@ -170,6 +210,11 @@ class Plugin {
                 ? array_map('sanitize_text_field', wp_unslash($value))
                 : sanitize_text_field(wp_unslash($value));
         }
+        foreach (self::extract_checkbox_field_names($form_id) as $field_name) {
+            if (!array_key_exists($field_name, $payload)) {
+                $payload[$field_name] = '0';
+            }
+        }
 
         $lead_id = wp_insert_post([
             'post_type' => 'lfb_lead',
@@ -178,7 +223,7 @@ class Plugin {
         ]);
 
         if (is_wp_error($lead_id)) {
-            return __('Failed to save lead.', 'lead-forms-builder');
+            return ['message' => __('Failed to save lead.', 'lead-forms-builder'), 'redirect_url' => '', 'redirect_delay' => 0];
         }
 
         update_post_meta($lead_id, '_lfb_form_id', $form_id);
@@ -198,11 +243,53 @@ class Plugin {
             foreach ($payload as $k => $v) {
                 $lines[] = (string) $k . ': ' . (is_array($v) ? implode(', ', $v) : (string) $v);
             }
-            wp_mail($notify_email, $subject, implode("
-", $lines));
+            wp_mail($notify_email, $subject, implode("\n", $lines));
         }
 
-        return __('Thank you! We received your details.', 'lead-forms-builder');
+        $default_message = __('Thank you! We received your details.', 'lead-forms-builder');
+        $success_message = (string) get_post_meta($form_id, '_lfb_success_message', true);
+        $action = (string) get_post_meta($form_id, '_lfb_after_submit_action', true);
+        $redirect_url = (string) get_post_meta($form_id, '_lfb_redirect_url', true);
+        $redirect_delay = (int) get_post_meta($form_id, '_lfb_redirect_delay', true);
+        if (!in_array($action, ['message', 'redirect', 'message_redirect'], true)) {
+            $action = 'message';
+        }
+        if (!wp_http_validate_url($redirect_url)) {
+            $redirect_url = '';
+        }
+
+        $result = ['message' => $success_message !== '' ? $success_message : $default_message, 'redirect_url' => '', 'redirect_delay' => max(0, min(30, $redirect_delay))];
+        if ('redirect' === $action && $redirect_url !== '') {
+            $result['message'] = '';
+            $result['redirect_url'] = $redirect_url;
+        } elseif ('message_redirect' === $action && $redirect_url !== '') {
+            $result['redirect_url'] = $redirect_url;
+        }
+
+        return $result;
+    }
+
+    private static function extract_checkbox_field_names(int $form_id): array {
+        $html = (string) get_post_meta($form_id, '_lfb_html', true);
+        if ($html === '') {
+            return [];
+        }
+
+        $matches = [];
+        preg_match_all('/<input[^>]*type=["\\\']checkbox["\\\'][^>]*name=["\\\']([^"\\\']+)["\\\']/i', $html, $matches);
+        if (empty($matches[1])) {
+            return [];
+        }
+
+        $names = [];
+        foreach ($matches[1] as $raw_name) {
+            $normalized = sanitize_key(str_replace('[]', '', (string) $raw_name));
+            if ($normalized !== '') {
+                $names[] = $normalized;
+            }
+        }
+
+        return array_values(array_unique($names));
     }
 
     public static function register_leads_page(): void {

@@ -57,6 +57,7 @@ class Plugin {
         $css = get_post_meta($post->ID, '_lfb_css', true);
         $js = get_post_meta($post->ID, '_lfb_js', true);
         $isolate = (bool) get_post_meta($post->ID, '_lfb_isolate', true);
+        $notify_email = (string) get_post_meta($post->ID, '_lfb_notify_email', true);
         ?>
         <p><?php esc_html_e('Paste your custom form markup. Make sure your form includes fields and submit button.', 'lead-forms-builder'); ?></p>
         <label for="lfb_html"><strong>HTML</strong></label>
@@ -71,6 +72,10 @@ class Plugin {
         <p style="margin-top:16px;">
             <label><input type="checkbox" name="lfb_isolate" value="1" <?php checked($isolate); ?>> <?php esc_html_e('Isolate form styles from the active theme (Shadow DOM mode)', 'lead-forms-builder'); ?></label>
         </p>
+
+        <label for="lfb_notify_email" style="display:block;margin-top:16px;"><strong>Email notifications</strong></label>
+        <input id="lfb_notify_email" name="lfb_notify_email" type="email" style="width:100%;" value="<?php echo esc_attr($notify_email); ?>" placeholder="name@example.com">
+        <p class="description"><?php esc_html_e('If set, each new lead from this form will be sent to this email.', 'lead-forms-builder'); ?></p>
         <?php
     }
 
@@ -93,6 +98,8 @@ class Plugin {
         update_post_meta($post_id, '_lfb_css', isset($_POST['lfb_css']) ? wp_unslash($_POST['lfb_css']) : '');
         update_post_meta($post_id, '_lfb_js', isset($_POST['lfb_js']) ? wp_unslash($_POST['lfb_js']) : '');
         update_post_meta($post_id, '_lfb_isolate', isset($_POST['lfb_isolate']) ? '1' : '0');
+        $notify_email = isset($_POST['lfb_notify_email']) ? sanitize_email(wp_unslash($_POST['lfb_notify_email'])) : '';
+        update_post_meta($post_id, '_lfb_notify_email', is_email($notify_email) ? $notify_email : '');
     }
 
     public static function render_form_shortcode(array $atts): string {
@@ -177,6 +184,23 @@ class Plugin {
         update_post_meta($lead_id, '_lfb_form_id', $form_id);
         update_post_meta($lead_id, '_lfb_payload', $payload);
         update_post_meta($lead_id, '_lfb_created_at', current_time('mysql'));
+
+        $notify_email = (string) get_post_meta($form_id, '_lfb_notify_email', true);
+        if (is_email($notify_email)) {
+            $subject = sprintf(__('New lead from form #%d', 'lead-forms-builder'), $form_id);
+            $lines = [
+                sprintf(__('Form ID: %d', 'lead-forms-builder'), $form_id),
+                sprintf(__('Lead ID: %d', 'lead-forms-builder'), (int) $lead_id),
+                sprintf(__('Submitted at: %s', 'lead-forms-builder'), (string) get_post_meta($lead_id, '_lfb_created_at', true)),
+                '',
+                __('Payload:', 'lead-forms-builder'),
+            ];
+            foreach ($payload as $k => $v) {
+                $lines[] = (string) $k . ': ' . (is_array($v) ? implode(', ', $v) : (string) $v);
+            }
+            wp_mail($notify_email, $subject, implode("
+", $lines));
+        }
 
         return __('Thank you! We received your details.', 'lead-forms-builder');
     }
